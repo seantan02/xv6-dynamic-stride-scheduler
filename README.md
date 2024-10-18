@@ -179,7 +179,7 @@ Yayy! You now have a running Stride scheduler.
 
 To verify the difference in behavior we described above let us test both  the RR and Stride scheduler on a CPU intensive workload, and use getpinfo to retrieve the scheduling information for them.
 
-There is a `workload.c` file in the xv6 initial xv6 implementation, ensure you have _workload target in your `UPROGS` in the Makefile.
+There is a `workload.c` file in the initial xv6 implementation, ensure you have _workload target in your `UPROGS` in the Makefile.
 
 run the RR scheduler first (without modifying the scheduler flag)
 ```

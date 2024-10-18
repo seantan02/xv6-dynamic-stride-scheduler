@@ -173,6 +173,8 @@ struct pstat {
 };
 ```
 
+Note that you need to add this struct definition to a header file named `pstat.h`. The tests will include this header to work with the struct.
+
 **Task 5**
 
 Yayy! You now have a running Stride scheduler.

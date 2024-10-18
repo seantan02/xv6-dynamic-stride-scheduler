@@ -216,7 +216,7 @@ Add both stride_process_stats.csv and rr_process_stats.csv inside your P4 direct
 
 **Task 6**
 
-Analyze the results of the workloads in your csvs to compare how processes with different tickets are scheduled in both cases. What is the advantage of stride scheduling? What is the behaviopattern of process runtimes observed because of dynamic process participation?
+Analyze the results of the workloads in your csvs to compare how processes with different tickets are scheduled in both cases. What is the advantage of stride scheduling? What is the behavior/pattern of process runtimes observed because of dynamic process participation?
 
 Add this brief explaination to your README.md.
 

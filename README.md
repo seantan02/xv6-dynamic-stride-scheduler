@@ -6,7 +6,21 @@ layout: default
 # CS537 Fall 2024, Project 4
 
 ## Updates
-* TBD
+- global_tickets - this is the sum of tickets of all processes wanting the resource (CPU in our case), this includes the process that is running as well as all processes ready to be run.
+- `getpinfo` should return -1 in the case it fails.
+- A helpful explanation of scheduling in xv6  https://www.youtube.com/watch?v=eYfeOT1QYmg 
+- ### Clarification on remain. Why do I need it?
+  Think about stride as speed each process is running at, and pass as the total distance the process has covered. The goal of the stride scheduler in our analogy is to keep the processes as close as possible. We don't want any process to be left behind. We always pick the process which is the farthest behind.
+
+  One way to think about it is the scheduler is trying to get it each process to atleast a threshold before letting any process run ahead. This value is the `global_pass`.
+  
+  Thinking in terms of speed will also clarify why we calculate `global_pass` as `STRIDE1/global_tickets` instead of taking an average of all `strides`. (Think back to when you needed to calculate the average speed in your physics class, you cannot just take the average of speeds).
+
+  Because each process has a different speed, a process can cover variable amount of distance in one time unit. So a process with speed (stride) 100 will cover 100 units in one tick, while a process with speed (stride) 1, will just cover 1.
+
+  For this reason, a process may be ahead or behind the average of the entire system at the time it goes to sleep. Let us consider 2 processes, `A` with stride 100 and `B` with stride 1, both of them have pass 0 at the start. 
+
+  Process `A` is scheduled first. Making its pass 100, now ideally we will schedule `B` 100 times before process `A` is scheduled again. After 20 times, `B` goes to sleep. Now when `B` is runnable again, we need to boost its pass value. We cannot use the same logic as setting it to the system average i.e. `global_pass` as it will be unfair as `B` was behind the average when it went to sleep. It should get more preference after being awake. This advantage/disadvantage compared to the global average is now encoded in terms of remain.
 
 ## Administrivia 
 - **Due Date** by November 5, 2024 at 11:59 PM

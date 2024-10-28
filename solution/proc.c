@@ -7,6 +7,8 @@
 #include "proc.h"
 #include "spinlock.h"
 
+#define STRIDE1 (1<<10)
+
 struct {
   struct spinlock lock;
   struct proc proc[NPROC];
@@ -17,6 +19,9 @@ static struct proc *initproc;
 int nextpid = 1;
 extern void forkret(void);
 extern void trapret(void);
+
+// this is defined in main.c
+extern int useStrideScheduler;
 
 static void wakeup1(void *chan);
 
@@ -73,6 +78,7 @@ myproc(void) {
 static struct proc*
 allocproc(void)
 {
+
   struct proc *p;
   char *sp;
 
@@ -112,6 +118,16 @@ found:
   memset(p->context, 0, sizeof *p->context);
   p->context->eip = (uint)forkret;
 
+  // give the process inital value of ticket, stride, and pass value
+  p->tickets = 8;  // default 8
+  p->stride = STRIDE1/p->tickets;  // need to recompute if ticket is changed
+  pushcli();
+  p->pass = mycpu()->pass; // always start at global pass
+  p->tickTaken = 0;  // initially 0
+  // Update global value
+  mycpu()->tickets += p->tickets;
+  mycpu()->stride = STRIDE1 / mycpu()->tickets;
+  popcli();
   return p;
 }
 
@@ -147,7 +163,6 @@ userinit(void)
   // writes to be visible, and the lock is also needed
   // because the assignment might not be atomic.
   acquire(&ptable.lock);
-
   p->state = RUNNABLE;
 
   release(&ptable.lock);
@@ -263,6 +278,12 @@ exit(void)
 
   // Jump into the scheduler, never to return.
   curproc->state = ZOMBIE;
+  // compute the global varibles when this process leaves
+  pushcli();
+  if(mycpu()->tickets >= curproc->tickets) mycpu()->tickets -= curproc->tickets;
+  else mycpu()->tickets = 0;
+  mycpu()->stride = STRIDE1 / mycpu()->tickets;
+  popcli();
   sched();
   panic("zombie exit");
 }
@@ -324,34 +345,96 @@ scheduler(void)
 {
   struct proc *p;
   struct cpu *c = mycpu();
+  struct proc *nextProcToRun = 0;
   c->proc = 0;
+  int lowestPass;
   
+  // Infinite loop that schedule a process
   for(;;){
-    // Enable interrupts on this processor.
+	// Enable interrupts on this processor.
     sti();
+	// if we are doign stride Schduler:
+	if(useStrideScheduler){
+	  // Loop over process table looking for process to run.
+      acquire(&ptable.lock);
+	  lowestPass = 0x7FFFFFFF;
 
-    // Loop over process table looking for process to run.
-    acquire(&ptable.lock);
-    for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
-      if(p->state != RUNNABLE)
-        continue;
+      for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+		if(p->state != RUNNABLE)
+          continue; 
+		// initial run
+		if(nextProcToRun == 0){
+		  nextProcToRun = p;
+		  lowestPass = p->pass;
+		  continue;
+		}
 
-      // Switch to chosen process.  It is the process's job
-      // to release ptable.lock and then reacquire it
-      // before jumping back to us.
-      c->proc = p;
-      switchuvm(p);
-      p->state = RUNNING;
+		// tie breaker
+		if(p->pass == lowestPass){
+		  // first check if this process has taken more ticks
+		  if(p->tickTaken > nextProcToRun->tickTaken) continue;
+		  if(p->tickTaken < nextProcToRun->tickTaken){
+			nextProcToRun = p;
+			continue;
+		  }
+		  // if tie again check PID, else do nothing
+		  if(p->pid < nextProcToRun->pid) nextProcToRun = p;
+		}else if(p->pass < lowestPass){
+		  nextProcToRun = p;
+		  lowestPass = p->pass;
+		}
+	  }
+	  cprintf("Global tickets  %d\n", c->tickets);	  
+	  if(nextProcToRun != 0){
+		c->proc = nextProcToRun;
+		switchuvm(nextProcToRun);
+		nextProcToRun->state = RUNNING;
+	    // before context switch we record what's the current tick and compare it later when returned
+		acquire(&tickslock);
+		nextProcToRun->startTick = ticks;
+		release(&tickslock);
+		// compute remain
+		nextProcToRun->remain = nextProcToRun->pass - c->pass;
+		if(nextProcToRun->remain < 0) nextProcToRun->remain = nextProcToRun->remain * -1; // difference
+		
+		swtch(&(c->scheduler), nextProcToRun->context);
+		switchkvm();
 
-      swtch(&(c->scheduler), p->context);
-      switchkvm();
+		// we retrieve the ticks difference
+		acquire(&tickslock);
+		nextProcToRun->tickTaken += (ticks - nextProcToRun->startTick);
+		release(&tickslock);
 
-      // Process is done running for now.
-      // It should have changed its p->state before coming back.
-      c->proc = 0;
-    }
-    release(&ptable.lock);
+		// now we increment the process's pass value by procTicks * stride
+		nextProcToRun->pass = nextProcToRun->remain + c->pass;
+		c->proc = 0; // reset
+	    nextProcToRun = 0; // reset
+	  }
+	  release(&ptable.lock);
 
+	}else{
+	  // Loop over process table looking for process to run.
+	  acquire(&ptable.lock);
+	  for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+	    if(p->state != RUNNABLE)
+          continue;
+
+	    // Switch to chosen process.  It is the process's job
+	    // to release ptable.lock and then reacquire it
+	    // before jumping back to us.
+	    c->proc = p;
+	    switchuvm(p);
+	    p->state = RUNNING;
+
+	    swtch(&(c->scheduler), p->context);
+	    switchkvm();
+
+	    // Process is done running for now.
+	    // It should have changed its p->state before coming back.
+	    c->proc = 0;
+      }
+	  release(&ptable.lock);
+	}
   }
 }
 

@@ -8,6 +8,7 @@
 #include "spinlock.h"
 
 #define STRIDE1 (1<<10)
+#define MAX_TICKETS (1<<5)
 
 struct {
   struct spinlock lock;
@@ -629,4 +630,35 @@ procdump(void)
     }
     cprintf("\n");
   }
+}
+
+
+// Process can set tickets for itself
+int
+settickets(int n)
+{
+  /*
+   * Min = 1
+   * Max = MAX_TICKETS
+   * If < 1, set to 8
+   */
+
+  // Called by a running process only. Not required to obtain a ptable lock
+
+  int tickets;
+
+  if(n < 1)
+    tickets = 8;
+  else {
+    if(n > MAX_TICKETS)
+      tickets = MAX_TICKETS;
+    else
+      tickets = n;
+  }
+
+  struct proc *cur_proc = myproc();
+
+  cur_proc->tickets = tickets;
+
+  return tickets; // returns the number of tickets set for the process
 }

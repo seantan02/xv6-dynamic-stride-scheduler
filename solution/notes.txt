@@ -1,0 +1,10 @@
+*Makefile was modifed to make me able to run without all the code. So please copy over original Makefile from ori repo when done.
+
+- Changes by Oct 27
+1. proc.c:
+	- modified allocproc
+	- modified scheduler()
+	- modified exit()
+2. pstat.h:
+	- added the headers as specified on README.md
+

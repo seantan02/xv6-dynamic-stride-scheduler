@@ -35,6 +35,7 @@ void
 pinit(void)
 {
   initlock(&ptable.lock, "ptable");
+  //  pstatinit();
 }
 
 // Must be called with interrupts disabled
@@ -646,21 +647,29 @@ settickets(int n)
 
   // Called by a running process only. Not required to obtain a ptable lock
 
-  int tickets;
+  int new_tickets_count;
 
   if(n < 1)
-    tickets = 8;
+    new_tickets_count = 8;
   else {
     if(n > MAX_TICKETS)
-      tickets = MAX_TICKETS;
+      new_tickets_count = MAX_TICKETS;
     else
-      tickets = n;
+      new_tickets_count = n;
   }
 
   struct proc *cur_proc = myproc();
+  int old_tickets_count = cur_proc->tickets;
+  
+  cur_proc->tickets = new_tickets_count;
+  cur_proc->stride = STRIDE1/cur_proc->tickets;
 
-  cur_proc->tickets = tickets;
-
-  return tickets; // returns the number of tickets set for the process
+  // Update global value
+  pushcli();
+  mycpu()->globalTicket += (new_tickets_count - old_tickets_count);
+  mycpu()->globalStride = STRIDE1 / mycpu()->globalTicket;
+  popcli();
+  
+  return new_tickets_count; // returns the number of tickets set for the process
 }
 

@@ -1,3 +1,5 @@
+#include "param.h"
+
 struct pstat {
   int inuse[NPROC];      // Whether this slot of the process table is in use (1 or 0)
   int tickets[NPROC];    // Number of tickets for each process
@@ -7,3 +9,9 @@ struct pstat {
   int stride[NPROC];     // Stride value for each process
   int rtime[NPROC];      // Total running time of each process
 };
+
+extern struct pstat pstats;
+
+// To retrieve scheduling information for all processes.
+int
+getpinfo(struct pstat *ret_pstat);

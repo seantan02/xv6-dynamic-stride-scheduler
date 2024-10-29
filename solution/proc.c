@@ -6,6 +6,7 @@
 #include "x86.h"
 #include "proc.h"
 #include "spinlock.h"
+#include "pstat.h" // To be used to update the pstat struct
 
 #define STRIDE1 (1<<10)
 #define MAX_TICKETS (1<<5)
@@ -662,3 +663,4 @@ settickets(int n)
 
   return tickets; // returns the number of tickets set for the process
 }
+

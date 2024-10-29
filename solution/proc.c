@@ -22,14 +22,10 @@ int nextpid = 1;
 extern void forkret(void);
 extern void trapret(void);
 
+// this is defined in main.c
+extern int useStrideScheduler;
+
 static void wakeup1(void *chan);
-
-// added global variable to determine if it's RR or Stride schduler
-int strideScheduler = 0;
-
-#if defined(STRIDE)
-    strideScheduler = 1;	// Handle stride scheduler
-#endif
 
 void
 pinit(void)
@@ -132,8 +128,8 @@ found:
   p->pass = mycpu()->pass; // always start at global pass
   p->tickTaken = 0;  // initially 0
   // Update global value
-  mycpu()->globalTicket += p->tickets;
-  mycpu()->globalStride = STRIDE1 / mycpu()->globalTicket;
+  mycpu()->tickets += p->tickets;
+  mycpu()->stride = STRIDE1 / mycpu()->tickets;
   popcli();
 
   //Updating the pstat struct for bookeeping
@@ -180,7 +176,6 @@ userinit(void)
   // writes to be visible, and the lock is also needed
   // because the assignment might not be atomic.
   acquire(&ptable.lock);
-
   p->state = RUNNABLE;
 
   release(&ptable.lock);
@@ -298,10 +293,10 @@ exit(void)
   curproc->state = ZOMBIE;
   // compute the global varibles when this process leaves
   pushcli();
-  mycpu()->globalTicket -= curproc->tickets;
-  mycpu()->globalStride = STRIDE1 / mycpu()->globalTicket;
+  if(mycpu()->tickets >= curproc->tickets) mycpu()->tickets -= curproc->tickets;
+  else mycpu()->tickets = 0;
+  mycpu()->stride = STRIDE1 / mycpu()->tickets;
   popcli();
-
   sched();
   panic("zombie exit");
 }
@@ -363,104 +358,95 @@ scheduler(void)
 {
   struct proc *p;
   struct cpu *c = mycpu();
+  struct proc *nextProcToRun = 0;
   c->proc = 0;
-
-  // we are guaranteed only one if or else runs depending on the strideScheduler global variable value: 0 or 1 (always)
-  if(strideScheduler){
-	// Stride Scheduler:
-     for(;;){
-       // Enable interrupts on this processor.
-       sti();
-       
-       // Loop over process table looking for process to run.
-       acquire(&ptable.lock); 
-	   double lowestPass = 9999999;
-	   struct proc *nextProcToRun = 0;
-       uint ticks0;
-	   for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
-         if(p->state != RUNNABLE)
-           continue;
-
-		 // track down the lowest pass value process		
-		 if(p->pass < lowestPass){
-		   lowestPass = p->pass;
-		   nextProcToRun = p;
-		   continue;
-		 }
-		 // if it's equal then we need tie-breaker
-		 if(p->pass == lowestPass){
-			if(nextProcToRun == 0){
-			  nextProcToRun = p;
-			  continue;
-			}
-		    
-			// lower tick taken goes first
-			if(p->tickTaken > nextProcToRun->tickTaken) continue; // if bigger then we skip
-			if(p->tickTaken < nextProcToRun->tickTaken){
-			  nextProcToRun = p;
-			  continue;
-			}
-			if(p->tickTaken == nextProcToRun->tickTaken){
-			  if(p->pid < nextProcToRun->pid) nextProcToRun = p; // only if pid is smaller we assign it
-			}
-		}
-
-         // Switch to chosen process.  It is the process's job
-         c->proc = nextProcToRun;
-         switchuvm(nextProcToRun);
-         nextProcToRun->state = RUNNING;
-         // we will now update the process new pass, ticket, and stride values before switching
-		 acquire(&tickslock);
-		 ticks0 = ticks;
-		 nextProcToRun->startTick = ticks0; // set the start tick
-		 release(&tickslock);
-		 // compute remain before switching
-		 nextProcToRun->remain = c->pass - nextProcToRun->pass;
-		 if(nextProcToRun->remain) nextProcToRun->remain = nextProcToRun->remain * -1; // take the absolute
-
-         swtch(&(c->scheduler), nextProcToRun->context);
-         switchkvm();
-         
-         // Process is done running for now.
-		 // update global pass value
-		 uint ticksDiff = ticks - nextProcToRun->startTick;
-		 c->pass += (ticksDiff * c->globalStride);  // update global pass by global stride
-		 // we will update its pass value
-		 nextProcToRun->pass = c->pass + nextProcToRun->remain;
-         // update its tickTaken value
-		 nextProcToRun->tickTaken += ticksDiff;
-		 // It should have changed its p->state before coming back.
-         c->proc = 0;
-       }
-       release(&ptable.lock);
-     }
-  }else{
-	// original RR implementation:
-    for(;;){
-	  // Enable interrupts on this processor.
-      sti();
-
-      // Loop over process table looking for process to run.
+  int lowestPass;
+  
+  // Infinite loop that schedule a process
+  for(;;){
+	// Enable interrupts on this processor.
+    sti();
+	// if we are doign stride Schduler:
+	if(useStrideScheduler){
+	  // Loop over process table looking for process to run.
       acquire(&ptable.lock);
+	  lowestPass = 0x7FFFFFFF;
+
       for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
 		if(p->state != RUNNABLE)
-          continue;
+          continue; 
+		// initial run
+		if(nextProcToRun == 0){
+		  nextProcToRun = p;
+		  lowestPass = p->pass;
+		  continue;
+		}
 
-		// Switch to chosen process.  It is the process's job
-		// to release ptable.lock and then reacquire it
-		// before jumping back to us.
-		c->proc = p;
-		switchuvm(p);
-		p->state = RUNNING;
-
-		swtch(&(c->scheduler), p->context);
+		// tie breaker
+		if(p->pass == lowestPass){
+		  // first check if this process has taken more ticks
+		  if(p->tickTaken > nextProcToRun->tickTaken) continue;
+		  if(p->tickTaken < nextProcToRun->tickTaken){
+			nextProcToRun = p;
+			continue;
+		  }
+		  // if tie again check PID, else do nothing
+		  if(p->pid < nextProcToRun->pid) nextProcToRun = p;
+		}else if(p->pass < lowestPass){
+		  nextProcToRun = p;
+		  lowestPass = p->pass;
+		}
+	  }
+	  cprintf("Global tickets  %d\n", c->tickets);	  
+	  if(nextProcToRun != 0){
+		c->proc = nextProcToRun;
+		switchuvm(nextProcToRun);
+		nextProcToRun->state = RUNNING;
+	    // before context switch we record what's the current tick and compare it later when returned
+		acquire(&tickslock);
+		nextProcToRun->startTick = ticks;
+		release(&tickslock);
+		// compute remain
+		nextProcToRun->remain = nextProcToRun->pass - c->pass;
+		if(nextProcToRun->remain < 0) nextProcToRun->remain = nextProcToRun->remain * -1; // difference
+		
+		swtch(&(c->scheduler), nextProcToRun->context);
 		switchkvm();
 
-		// Process is done running for now.
-		// It should have changed its p->state before coming back.
-		c->proc = 0;
+		// we retrieve the ticks difference
+		acquire(&tickslock);
+		nextProcToRun->tickTaken += (ticks - nextProcToRun->startTick);
+		release(&tickslock);
+
+		// now we increment the process's pass value by procTicks * stride
+		nextProcToRun->pass = nextProcToRun->remain + c->pass;
+		c->proc = 0; // reset
+	    nextProcToRun = 0; // reset
+	  }
+	  release(&ptable.lock);
+
+	}else{
+	  // Loop over process table looking for process to run.
+	  acquire(&ptable.lock);
+	  for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+	    if(p->state != RUNNABLE)
+          continue;
+
+	    // Switch to chosen process.  It is the process's job
+	    // to release ptable.lock and then reacquire it
+	    // before jumping back to us.
+	    c->proc = p;
+	    switchuvm(p);
+	    p->state = RUNNING;
+
+	    swtch(&(c->scheduler), p->context);
+	    switchkvm();
+
+	    // Process is done running for now.
+	    // It should have changed its p->state before coming back.
+	    c->proc = 0;
       }
-      release(&ptable.lock);
+	  release(&ptable.lock);
 	}
   }
 }

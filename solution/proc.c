@@ -136,6 +136,15 @@ found:
   mycpu()->globalStride = STRIDE1 / mycpu()->globalTicket;
   popcli();
 
+  //Updating the pstat struct for bookeeping
+  uint proc_index = (p - &ptable.proc[0])/sizeof(struct proc);
+  pstats.pid[proc_index] = p->pid;
+  pstats.inuse[proc_index] = 1;
+  pstats.tickets[proc_index] = p->tickets;
+  pstats.stride[proc_index] = p->stride;
+  pstats.pass[proc_index] = p->pass;
+  pstats.rtime[proc_index] = p->tickTaken;
+  
   return p;
 }
 
@@ -645,8 +654,10 @@ settickets(int n)
    * If < 1, set to 8
    */
 
-  // Called by a running process only. Not required to obtain a ptable lock
-
+  struct proc *p;
+  
+  acquire(&ptable.lock); // acquiring lock early so as to set the change of tickets to the right process
+    
   int new_tickets_count;
 
   if(n < 1)
@@ -669,6 +680,15 @@ settickets(int n)
   mycpu()->globalTicket += (new_tickets_count - old_tickets_count);
   mycpu()->globalStride = STRIDE1 / mycpu()->globalTicket;
   popcli();
+
+  // Updating the pstats struct for bookeeping
+  // Got to find the ptable index for the curr proc. Doing some math here. Otherwise, will have to do a linear search
+  uint proc_index = (cur_proc - &ptable.proc[0])/sizeof(struct proc);
+
+  pstats.tickets[proc_index] = cur_proc->tickets;
+  pstats.stride[proc_index] = cur_proc->stride;
+  
+  release(&ptable.lock);
   
   return new_tickets_count; // returns the number of tickets set for the process
 }

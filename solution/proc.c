@@ -94,7 +94,9 @@ allocproc(void)
   release(&ptable.lock);
   return 0;
 
-found:
+ found:
+  uint proc_index = (p - &ptable.proc[0])/sizeof(struct proc);
+  
   p->state = EMBRYO;
   p->pid = nextpid++;
 
@@ -103,6 +105,8 @@ found:
   // Allocate kernel stack.
   if((p->kstack = kalloc()) == 0){
     p->state = UNUSED;
+    // MARKER_PSTATS_UPDATE
+    pstats.inuse[proc_index] = 0;
     return 0;
   }
   sp = p->kstack + KSTACKSIZE;
@@ -133,7 +137,9 @@ found:
   popcli();
 
   //Updating the pstat struct for bookeeping
-  uint proc_index = (p - &ptable.proc[0])/sizeof(struct proc);
+  proc_index = (p - &ptable.proc[0])/sizeof(struct proc);
+
+  // MARKER_PSTATS_UPDATE  
   pstats.pid[proc_index] = p->pid;
   pstats.inuse[proc_index] = 1;
   pstats.tickets[proc_index] = p->tickets;
@@ -217,11 +223,14 @@ fork(void)
     return -1;
   }
 
+  uint proc_index = (np - &ptable.proc[0])/sizeof(struct proc);
   // Copy process state from proc.
   if((np->pgdir = copyuvm(curproc->pgdir, curproc->sz)) == 0){
     kfree(np->kstack);
     np->kstack = 0;
     np->state = UNUSED;
+    // MARKER_PSTATS_UPDATE
+    pstats.inuse[proc_index] = 0;
     return -1;
   }
   np->sz = curproc->sz;
@@ -309,6 +318,7 @@ wait(void)
   struct proc *p;
   int havekids, pid;
   struct proc *curproc = myproc();
+  uint proc_index;
   
   acquire(&ptable.lock);
   for(;;){
@@ -329,6 +339,9 @@ wait(void)
         p->name[0] = 0;
         p->killed = 0;
         p->state = UNUSED;
+	// MARKER_PSTATS_UPDATE
+	proc_index = (p - &ptable.proc[0])/sizeof(struct proc);
+	pstats.inuse[proc_index] = 0;
         release(&ptable.lock);
         return pid;
       }
@@ -364,90 +377,99 @@ scheduler(void)
   
   // Infinite loop that schedule a process
   for(;;){
-	// Enable interrupts on this processor.
+    // Enable interrupts on this processor.
     sti();
-	// if we are doign stride Schduler:
-	if(useStrideScheduler){
-	  // Loop over process table looking for process to run.
+    // if we are doign stride Schduler:
+    if(useStrideScheduler){
+      // Loop over process table looking for process to run.
       acquire(&ptable.lock);
-	  lowestPass = 0x7FFFFFFF;
+      lowestPass = 0x7FFFFFFF;
 
       for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
-		if(p->state != RUNNABLE)
+	if(p->state != RUNNABLE)
           continue; 
-		// initial run
-		if(nextProcToRun == 0){
-		  nextProcToRun = p;
-		  lowestPass = p->pass;
-		  continue;
-		}
+	// initial run
+	if(nextProcToRun == 0){
+	  nextProcToRun = p;
+	  lowestPass = p->pass;
+	  continue;
+	}
 
-		// tie breaker
-		if(p->pass == lowestPass){
-		  // first check if this process has taken more ticks
-		  if(p->tickTaken > nextProcToRun->tickTaken) continue;
-		  if(p->tickTaken < nextProcToRun->tickTaken){
-			nextProcToRun = p;
-			continue;
-		  }
-		  // if tie again check PID, else do nothing
-		  if(p->pid < nextProcToRun->pid) nextProcToRun = p;
-		}else if(p->pass < lowestPass){
-		  nextProcToRun = p;
-		  lowestPass = p->pass;
-		}
+	// tie breaker
+	if(p->pass == lowestPass){
+	  // first check if this process has taken more ticks
+	  if(p->tickTaken > nextProcToRun->tickTaken) continue;
+	  if(p->tickTaken < nextProcToRun->tickTaken){
+	    nextProcToRun = p;
+	    continue;
 	  }
-	  cprintf("Global tickets  %d\n", c->tickets);	  
-	  if(nextProcToRun != 0){
-		c->proc = nextProcToRun;
-		switchuvm(nextProcToRun);
-		nextProcToRun->state = RUNNING;
-	    // before context switch we record what's the current tick and compare it later when returned
-		acquire(&tickslock);
-		nextProcToRun->startTick = ticks;
-		release(&tickslock);
-		// compute remain
-		nextProcToRun->remain = nextProcToRun->pass - c->pass;
-		if(nextProcToRun->remain < 0) nextProcToRun->remain = nextProcToRun->remain * -1; // difference
+	  // if tie again check PID, else do nothing
+	  if(p->pid < nextProcToRun->pid) nextProcToRun = p;
+	}else if(p->pass < lowestPass){
+	  nextProcToRun = p;
+	  lowestPass = p->pass;
+	}
+      }
+      cprintf("Global tickets  %d\n", c->tickets);	  
+      if(nextProcToRun != 0){
+	c->proc = nextProcToRun;
+	switchuvm(nextProcToRun);
+	nextProcToRun->state = RUNNING;
+	// before context switch we record what's the current tick and compare it later when returned
+	acquire(&tickslock);
+	nextProcToRun->startTick = ticks;
+	release(&tickslock);
+	// compute remain
+	nextProcToRun->remain = nextProcToRun->pass - c->pass;
+	if(nextProcToRun->remain < 0) nextProcToRun->remain = nextProcToRun->remain * -1; // difference
+
+	// MARKER_PSTATS_UPDATE
+	uint proc_index = (nextProcToRun - &ptable.proc[0])/sizeof(struct proc);
+	pstats.remain[proc_index] = nextProcToRun->remain;
 		
-		swtch(&(c->scheduler), nextProcToRun->context);
-		switchkvm();
+	swtch(&(c->scheduler), nextProcToRun->context);
+	switchkvm();
+		
+		
+	// we retrieve the ticks difference
+	acquire(&tickslock);
+	nextProcToRun->tickTaken += (ticks - nextProcToRun->startTick);
+	release(&tickslock);
 
-		// we retrieve the ticks difference
-		acquire(&tickslock);
-		nextProcToRun->tickTaken += (ticks - nextProcToRun->startTick);
-		release(&tickslock);
+	// now we increment the process's pass value by procTicks * stride
+	nextProcToRun->pass = nextProcToRun->remain + c->pass;
+	// MARKER_PSTATS_UPDATE
+	pstats.pass[proc_index] = nextProcToRun->pass;
+	pstats.rtime[proc_index] = nextProcToRun->tickTaken;
+		
+	c->proc = 0; // reset
+	nextProcToRun = 0; // reset
+      }
+      release(&ptable.lock);
 
-		// now we increment the process's pass value by procTicks * stride
-		nextProcToRun->pass = nextProcToRun->remain + c->pass;
-		c->proc = 0; // reset
-	    nextProcToRun = 0; // reset
-	  }
-	  release(&ptable.lock);
-
-	}else{
-	  // Loop over process table looking for process to run.
-	  acquire(&ptable.lock);
-	  for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
-	    if(p->state != RUNNABLE)
+    }else{
+      // Loop over process table looking for process to run.
+      acquire(&ptable.lock);
+      for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+	if(p->state != RUNNABLE)
           continue;
 
-	    // Switch to chosen process.  It is the process's job
-	    // to release ptable.lock and then reacquire it
-	    // before jumping back to us.
-	    c->proc = p;
-	    switchuvm(p);
-	    p->state = RUNNING;
+	// Switch to chosen process.  It is the process's job
+	// to release ptable.lock and then reacquire it
+	// before jumping back to us.
+	c->proc = p;
+	switchuvm(p);
+	p->state = RUNNING;
 
-	    swtch(&(c->scheduler), p->context);
-	    switchkvm();
+	swtch(&(c->scheduler), p->context);
+	switchkvm();
 
-	    // Process is done running for now.
-	    // It should have changed its p->state before coming back.
-	    c->proc = 0;
+	// Process is done running for now.
+	// It should have changed its p->state before coming back.
+	c->proc = 0;
       }
-	  release(&ptable.lock);
-	}
+      release(&ptable.lock);
+    }
   }
 }
 
@@ -600,12 +622,12 @@ void
 procdump(void)
 {
   static char *states[] = {
-  [UNUSED]    "unused",
-  [EMBRYO]    "embryo",
-  [SLEEPING]  "sleep ",
-  [RUNNABLE]  "runble",
-  [RUNNING]   "run   ",
-  [ZOMBIE]    "zombie"
+    [UNUSED]    "unused",
+    [EMBRYO]    "embryo",
+    [SLEEPING]  "sleep ",
+    [RUNNABLE]  "runble",
+    [RUNNING]   "run   ",
+    [ZOMBIE]    "zombie"
   };
   int i;
   struct proc *p;
@@ -667,11 +689,15 @@ settickets(int n)
 
   // Updating the pstats struct for bookeeping
   // Got to find the ptable index for the curr proc. Doing some math here. Otherwise, will have to do a linear search
+  // FIXME : possibly wrong math, verify
   uint proc_index = (cur_proc - &ptable.proc[0])/sizeof(struct proc);
 
+  // MARKER_PSTATS_UPDATE
   pstats.tickets[proc_index] = cur_proc->tickets;
   pstats.stride[proc_index] = cur_proc->stride;
-  
+
+  //FIXME : Calculate global tickets and stride value again
+  // Call that function
   release(&ptable.lock);
   
   return new_tickets_count; // returns the number of tickets set for the process

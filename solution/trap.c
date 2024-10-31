@@ -14,6 +14,8 @@ extern uint vectors[];  // in vectors.S: array of 256 entry pointers
 struct spinlock tickslock;
 uint ticks;
 extern int useStrideScheduler;
+extern int globalPass;
+extern int globalStride;
 
 void
 tvinit(void)
@@ -54,8 +56,10 @@ trap(struct trapframe *tf)
       ticks++;
 	  // increment the global count by stride
 	  if(useStrideScheduler){
-		struct cpu *c = mycpu();
-		c->pass += (c->stride);
+		globalPass += globalStride;
+		if(myproc() && myproc()->state == RUNNING){
+			myproc()->tickTaken++;
+		}
 	  }
       wakeup(&ticks);
       release(&tickslock);

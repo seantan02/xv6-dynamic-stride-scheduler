@@ -640,8 +640,6 @@ settickets(int n)
    * If < 1, set to 8
    */
 
-  struct proc *p;
-  
   acquire(&ptable.lock); // acquiring lock early so as to set the change of tickets to the right process
     
   int new_tickets_count;
@@ -663,8 +661,8 @@ settickets(int n)
 
   // Update global value
   pushcli();
-  mycpu()->globalTicket += (new_tickets_count - old_tickets_count);
-  mycpu()->globalStride = STRIDE1 / mycpu()->globalTicket;
+  mycpu()->tickets += (new_tickets_count - old_tickets_count);
+  mycpu()->stride = STRIDE1 / mycpu()->tickets;
   popcli();
 
   // Updating the pstats struct for bookeeping

@@ -47,6 +47,7 @@ mpenter(void)
   mpmain();
 }
 
+#ifdef STRIDE
 // helper function
 // Add this function
 void
@@ -56,6 +57,7 @@ initcpuscheduler(struct cpu *c)
   c->tickets = 0;
   c->pass = 0;
 }
+#endif
 
 // Common CPU setup code.
 static void
@@ -64,8 +66,10 @@ mpmain(void)
   cprintf("cpu%d: starting %d\n", cpuid(), cpuid());
   idtinit();       // load idt register
   xchg(&(mycpu()->started), 1); // tell startothers() we're up
+#ifdef STRIDE
   // initiate global values
   initcpuscheduler(mycpu());
+#endif
   scheduler();     // start running processes
 }
 

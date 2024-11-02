@@ -91,6 +91,7 @@ sys_uptime(void)
   return xticks;
 }
 
+#ifdef STRIDE
 int
 sys_settickets(void)
 {
@@ -103,6 +104,7 @@ sys_settickets(void)
   return settickets(n_tickets);
 
 }
+#endif
 
 int
 sys_getpinfo(void)

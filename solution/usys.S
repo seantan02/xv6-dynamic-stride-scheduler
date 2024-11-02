@@ -29,5 +29,7 @@ SYSCALL(getpid)
 SYSCALL(sbrk)
 SYSCALL(sleep)
 SYSCALL(uptime)
+#ifdef STRIDE
 SYSCALL(settickets)
+#endif
 SYSCALL(getpinfo)

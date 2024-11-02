@@ -424,22 +424,22 @@ scheduler(void)
 #elif defined(STRIDE)
     // Loop over process table looking for process to run.
     acquire(&ptable.lock);
-    //    cprintf("\n ACQUIRED LOCK");
-    //    lowestPass = 0x7FFFFFFF;
 
     // We will go through the entire ptable as unlike RR scheduler.
     //We would have to find the process with the least pass value (process in the RUNNABLE state)
-
+    //    cprintf("\n Finding nextProc");
     for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
       if(p->state != RUNNABLE)
 	continue;
 
       // Update the Global values whenever we find a RUNNABLE process
       c->tickets += p->tickets;
+      //      cprintf("\n zero check, tickets value -> %d", c->tickets);
 
       if(nextProcToRun == 0) {
 	nextProcToRun = p;
 	lowestPass = p->pass;
+	//	cprintf("\n First pass in Proc table. Setting proc with PID -> %d", nextProcToRun->pid);
 	continue;
       }
 
@@ -464,6 +464,14 @@ scheduler(void)
     }
 
     // We update the stride value after going throught the entire ptable, calculating the global tickets value
+    //    cprintf("\n GLOBAL TICKETS before stride count -> %d", c->tickets);
+    if(c->tickets == 0) {
+      c->proc = 0; // reset
+      nextProcToRun = 0; // reset
+      release(&ptable.lock);
+      continue;
+    }
+    
     c->stride = STRIDE1/c->tickets;
 
     if(nextProcToRun != 0) {
@@ -478,10 +486,10 @@ scheduler(void)
       release(&tickslock);
 
       nextProcToRun->pass = nextProcToRun->remain + c->pass;
-      cprintf("\n SWITCHING TO RUNNNNN PROCESSSS");
+      //      cprintf("\n SWITCHING TO RUNNNNN PROCESSSS with PID -> %d", nextProcToRun->pid);
       swtch(&(c->scheduler), nextProcToRun->context);
       switchkvm();
-      cprintf("\n BACK FROM RUNNNNN");
+      //      cprintf("\n BACK FROM RUNNNNN");
 
       // we retrieve the ticks difference
       acquire(&tickslock);
@@ -504,12 +512,13 @@ scheduler(void)
       pstats.rtime[proc_index] = nextProcToRun->tickTaken;
 
       //      cprintf("\nPSTATS REMAIN -> %d, PASS -> %d, RTIME -> %d", pstats.remain[proc_index], pstats.pass[proc_index], pstats.rtime[proc_index]);
-      cprintf("\nPID -> %d", c->proc->pid);
-      cprintf("\nCPU PASS -> %d, TICKETS -> %d, STRIDE -> %d", c->pass, c->tickets, c->stride);
+      //      cprintf("\nPID -> %d", c->proc->pid);
+      //      cprintf("\nCPU PASS -> %d, TICKETS -> %d, STRIDE -> %d", c->pass, c->tickets, c->stride);
 
-      c->proc = 0; // reset
     }
     
+    c->proc = 0; // reset
+    nextProcToRun = 0; // reset
     release(&ptable.lock);
 #endif    
 

@@ -104,9 +104,7 @@ extern int sys_unlink(void);
 extern int sys_wait(void);
 extern int sys_write(void);
 extern int sys_uptime(void);
-#ifdef STRIDE
 extern int sys_settickets(void);
-#endif
 extern int sys_getpinfo(void);
 
 static int (*syscalls[])(void) = {
@@ -131,9 +129,7 @@ static int (*syscalls[])(void) = {
 [SYS_link]    sys_link,
 [SYS_mkdir]   sys_mkdir,
 [SYS_close]   sys_close,
-#ifdef STRIDE
 [SYS_settickets] sys_settickets,
-#endif
 [SYS_getpinfo] sys_getpinfo,
 };
 

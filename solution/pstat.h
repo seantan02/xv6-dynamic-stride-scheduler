@@ -13,3 +13,6 @@ struct pstat {
 
   //  struct spinlock lock;
 };
+
+int
+getpinfo(struct pstat *ret_pstat);

@@ -383,9 +383,9 @@ scheduler(void)
 #ifdef STRIDE
   struct proc *nextProcToRun = 0;
   int lowestPass;
+  c->pass = 0;
 #endif
-  // FIXME : At some point the global pass has to be set to zero. Figure out where.
-  
+
   // Infinite loop that schedule a process
   for(;;){
     // Enable interrupts on this processor.
@@ -500,6 +500,8 @@ scheduler(void)
       c->proc = 0; // reset
       nextProcToRun = 0; // reset
     }
+
+    c->pass += c->stride;
     release(&ptable.lock);
 #endif    
 

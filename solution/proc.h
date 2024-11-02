@@ -9,9 +9,9 @@ struct cpu {
   int intena;                  // Were interrupts enabled before pushcli?
   struct proc *proc;           // The process running on this cpu or null
 #ifdef STRIDE  
-  int tickets;			   // Global count of ticket
-  int stride;			   // Global stride
-  int pass;					   // Global pass value
+  uint tickets;			   // Global count of ticket
+  uint stride;			   // Global stride
+  uint pass;					   // Global pass value
 //  uint lastUpdated;			   // Tick of last updated
 #endif
 };

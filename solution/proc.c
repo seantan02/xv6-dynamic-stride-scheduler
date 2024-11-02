@@ -94,10 +94,11 @@ allocproc(void)
   return 0;
 
  found:
-  uint proc_index = (p - &ptable.proc[0])/sizeof(struct proc);
+  uint proc_index = p - ptable.proc;
   
   p->state = EMBRYO;
   p->pid = nextpid++;
+  pstats.inuse[proc_index] = 1;
 
   release(&ptable.lock);
 
@@ -138,7 +139,7 @@ allocproc(void)
   popcli();
   */
   //Updating the pstat struct for bookeeping
-  proc_index = (p - &ptable.proc[0])/sizeof(struct proc);
+  proc_index = p - ptable.proc;
 
   // MARKER_PSTATS_UPDATE  
   pstats.pid[proc_index] = p->pid;
@@ -224,7 +225,8 @@ fork(void)
     return -1;
   }
 
-  uint proc_index = (np - &ptable.proc[0])/sizeof(struct proc);
+  uint proc_index = np - ptable.proc;
+  
   // Copy process state from proc.
   if((np->pgdir = copyuvm(curproc->pgdir, curproc->sz)) == 0){
     kfree(np->kstack);
@@ -268,7 +270,7 @@ exit(void)
   struct proc *curproc = myproc();
   struct proc *p;
   int fd;
-  uint proc_index;
+  //  uint proc_index;
 
   if(curproc == initproc)
     panic("init exiting");
@@ -299,8 +301,8 @@ exit(void)
         wakeup1(initproc);
     }
   }
-  proc_index = (curproc - &ptable.proc[0])/sizeof(struct proc);
-  pstats.inuse[proc_index] = 0;
+  //  proc_index = (curproc - ptable.proc)/sizeof(struct proc);
+  //  pstats.inuse[proc_index] = 0;
 
   // Jump into the scheduler, never to return.
   curproc->state = ZOMBIE;
@@ -347,7 +349,7 @@ wait(void)
         p->killed = 0;
         p->state = UNUSED;
 	// MARKER_PSTATS_UPDATE
-	proc_index = (p - &ptable.proc[0])/sizeof(struct proc);
+	proc_index = p - ptable.proc;
 	pstats.inuse[proc_index] = 0;
         release(&ptable.lock);
         return pid;
@@ -505,7 +507,7 @@ scheduler(void)
 	nextProcToRun->remain = nextProcToRun->remain * -1; // difference
 
       // MARKER_PSTATS_UPDATE
-      uint proc_index = (nextProcToRun - &ptable.proc[0])/sizeof(struct proc);
+      uint proc_index = nextProcToRun - ptable.proc;
       pstats.remain[proc_index] = nextProcToRun->remain;
       pstats.pass[proc_index] = nextProcToRun->pass;
       pstats.rtime[proc_index] = nextProcToRun->tickTaken;
@@ -716,7 +718,8 @@ settickets(int n)
   acquire(&ptable.lock); // acquiring lock early so as to set the change of tickets to the right process
     
   int new_tickets_count;
-
+  int old_stride_count;
+  
   if(n < 1)
     new_tickets_count = 8;
   else {
@@ -728,12 +731,16 @@ settickets(int n)
 
   struct proc *cur_proc = myproc();
   
+  old_stride_count = cur_proc->stride;
+  
   cur_proc->tickets = new_tickets_count;
   cur_proc->stride = STRIDE1/cur_proc->tickets;
+  cur_proc->remain = cur_proc->remain * (cur_proc->stride/old_stride_count);
+  
 
   // Updating the pstats struct for bookeeping
   // Got to find the ptable index for the curr proc. Doing some math here. Otherwise, will have to do a linear search
-  uint proc_index = (cur_proc - &ptable.proc[0])/sizeof(struct proc);
+  uint proc_index = cur_proc - ptable.proc;
 
   // MARKER_PSTATS_UPDATE
   pstats.tickets[proc_index] = cur_proc->tickets;
@@ -752,7 +759,7 @@ getpinfo(struct pstat *ret_pstat)
   if(ret_pstat == 0)
     return -1;
 
-  //  acquire(&pstats.lock);
+  acquire(&ptable.lock);
 
   for(int i = 0; i < NPROC; i++) {
     ret_pstat->inuse[i] = pstats.inuse[i];
@@ -764,7 +771,7 @@ getpinfo(struct pstat *ret_pstat)
     ret_pstat->rtime[i] = pstats.rtime[i];
   }
 
-  //  release(&pstats.lock);
+  release(&ptable.lock);
   
   return 0;
 }

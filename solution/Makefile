@@ -190,7 +190,7 @@ UPROGS=\
 	_wc\
 	_zombie\
 	_getpinfo\
-#	_workload\
+	_workload\
 
 fs.img: mkfs README $(UPROGS)
 	./mkfs fs.img README $(UPROGS)

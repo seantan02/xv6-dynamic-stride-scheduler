@@ -124,7 +124,6 @@ allocproc(void)
   memset(p->context, 0, sizeof *p->context);
   p->context->eip = (uint)forkret;
 
-#ifdef STRIDE
   // give the process inital value of ticket, stride, and pass value
   p->tickets = 8;  // default 8
   p->stride = STRIDE1/p->tickets;  // need to recompute if ticket is changed
@@ -148,7 +147,7 @@ allocproc(void)
   pstats.stride[proc_index] = p->stride;
   pstats.pass[proc_index] = p->pass;
   pstats.rtime[proc_index] = p->tickTaken;
-#endif
+
   return p;
 }
 

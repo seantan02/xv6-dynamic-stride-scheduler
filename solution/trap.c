@@ -60,11 +60,12 @@ trap(struct trapframe *tf)
 	  // update globalPass
 	  if(useStrideScheduler == 1){
 		globalPass += globalStride;
-	    if(myproc() && myproc()->state == RUNNING){
-		  myproc()->ticksTaken++;
-		  myproc()->pass += myproc()->stride;
-		}
 	  }
+
+	  if(myproc() && myproc()->state == RUNNING){
+		myproc()->ticksTaken++;
+	  }
+
       release(&tickslock);
     }
     lapiceoi();

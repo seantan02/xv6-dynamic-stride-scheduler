@@ -433,7 +433,10 @@ scheduler(void)
 
 			swtch(&(c->scheduler), nextProcToRun->context);
 			switchkvm();
-			
+		
+			// increment process pass after run
+			nextProcToRun->pass += nextProcToRun->stride;
+	
 			c->proc = 0;
 			nextProcToRun = 0;
 		}
@@ -442,6 +445,7 @@ scheduler(void)
 		// Loop over process table looking for process to run.
 		acquire(&ptable.lock);
 		for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+			updatePstatsForProcess(p);
 			if(p->state != RUNNABLE)
 				continue;
 

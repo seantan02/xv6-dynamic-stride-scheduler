@@ -55,7 +55,9 @@ struct proc {
   int remain;
   int ticksTaken;
 };
-
+void recomputePassWithRemain(struct proc *p);
+void computeRemainBeforeLeaving(struct proc *p);
+void updatePstatsForProcess(struct proc *p);
 // Process memory is laid out contiguously, low addresses first:
 //   text
 //   original data and bss

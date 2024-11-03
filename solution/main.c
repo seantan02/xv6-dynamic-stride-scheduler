@@ -14,7 +14,6 @@ int globalTickets = 0;
 int globalStride = 0;
 int globalPass = 0;
 int useStrideScheduler = 0;
-int defaultTicket = 8;
 
 // Bootstrap processor starts running C code here.
 // Allocate a real stack and switch to it, first

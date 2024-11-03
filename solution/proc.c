@@ -124,11 +124,6 @@ found:
   memset(p->context, 0, sizeof *p->context);
   p->context->eip = (uint)forkret;
 
-  // set the initial tickets and stride and pass
-  p->tickets = defaultTicket;
-  p->stride = STRIDE1 / p->tickets;
-  p->pass = globalPass;
-
   return p;
 }
 
@@ -232,7 +227,13 @@ fork(void)
   acquire(&ptable.lock);
 
   np->state = RUNNABLE;
-
+  
+  np->tickets = 8;
+  np->stride = STRIDE1 / np->tickets;
+  np->remain = 0;
+  np->pass = globalPass;
+  updatePstatsForProcess(np);
+  
   release(&ptable.lock);
 
   return pid;
@@ -328,6 +329,37 @@ wait(void)
   }
 }
 
+// helper function of recomputing process pass with remain
+void recomputePassWithRemain(struct proc *p){
+  // this process remain is assumed to be correct
+  p->pass = p->remain + globalPass;
+}
+
+void computeRemainBeforeLeaving(struct proc *p){
+  p->remain = p->pass - globalPass;
+  globalTickets -= p->tickets;
+  if(globalTickets != 0) globalStride = STRIDE1 / globalTickets;
+}
+
+void updatePstatsForProcess(struct proc *p){
+  if(p == 0) return;
+  int index = p - ptable.proc;
+
+  if(p->state != RUNNABLE && p->state != RUNNING){
+	pstats.inuse[index] = 0;
+    return;
+  }
+  
+  pstats.inuse[index] = 1; 
+  pstats.tickets[index] = p->tickets;
+  pstats.pid[index] = p->pid;
+  pstats.pass[index] = p->pass;
+  pstats.remain[index] = p->remain;
+  pstats.stride[index] = p->stride;
+  pstats.rtime[index] = p->ticksTaken;
+  return;  
+}
+
 //PAGEBREAK: 42
 // Per-CPU process scheduler.
 // Each CPU calls scheduler() after setting itself up.
@@ -358,19 +390,9 @@ scheduler(void)
 		acquire(&ptable.lock);
 		for(int i = 0; i < NPROC; i++) {
 			p = &ptable.proc[i];
+			updatePstatsForProcess(p); // update pstats
 			// update pstats for all processes
-			if(p->state != RUNNABLE){
-				pstats.inuse[i] = 0;
-				continue;
-			}
-			// if process is RUNNABLE we will populate the field of pstats
-			pstats.inuse[i] = 1;
-			pstats.tickets[i] = p->tickets;
-			pstats.pid[i] = p->pid;
-			pstats.pass[i] = p->pass;
-			pstats.remain[i] = p->remain;
-			pstats.stride[i] = p->stride;
-			pstats.rtime[i] = p->ticksTaken;
+			if(p->state != RUNNABLE) continue;
 
 			// here onwards are only processes that are RUNNABLE
 			tickets += p->tickets; // to recompute global tickets
@@ -475,6 +497,7 @@ yield(void)
   acquire(&ptable.lock);  //DOC: yieldlock
   myproc()->state = RUNNABLE;
   sched();
+  recomputePassWithRemain(myproc());
   release(&ptable.lock);
 }
 
@@ -527,6 +550,9 @@ sleep(void *chan, struct spinlock *lk)
   p->chan = chan;
   p->state = SLEEPING;
 
+  // recompute remain
+  computeRemainBeforeLeaving(p);
+
   sched();
 
   // Tidy up.
@@ -548,8 +574,10 @@ wakeup1(void *chan)
   struct proc *p;
 
   for(p = ptable.proc; p < &ptable.proc[NPROC]; p++)
-    if(p->state == SLEEPING && p->chan == chan)
+    if(p->state == SLEEPING && p->chan == chan){
+	  recomputePassWithRemain(p);
 	  p->state = RUNNABLE;
+	}
 }
 
 // Wake up all processes sleeping on chan.
@@ -634,7 +662,8 @@ settickets(int n)
   acquire(&ptable.lock); // acquiring lock early so as to set the change of tickets to the right process
     
   int new_tickets_count;
-
+  int old_stride_count;
+  
   if(n < 1)
     new_tickets_count = 8;
   else {
@@ -645,33 +674,35 @@ settickets(int n)
   }
 
   struct proc *cur_proc = myproc();
-  int oldStride = 0;
+  
+  old_stride_count = cur_proc->stride;
   
   cur_proc->tickets = new_tickets_count;
-  oldStride = cur_proc->stride;
-  if(cur_proc->tickets > 0) cur_proc->stride = STRIDE1/cur_proc->tickets;
-  if(oldStride > 0) cur_proc->pass = cur_proc->remain * (cur_proc->stride / oldStride);
+  cur_proc->stride = STRIDE1/cur_proc->tickets;
+  cur_proc->remain = cur_proc->remain * (cur_proc->stride/old_stride_count);
 
   // Updating the pstats struct for bookeeping
   // Got to find the ptable index for the curr proc. Doing some math here. Otherwise, will have to do a linear search
   uint proc_index = cur_proc - ptable.proc;
 
   // MARKER_PSTATS_UPDATE
-  if(pstats.pid[proc_index] != cur_proc->pid) cprintf("Wrong process index!\n");
   pstats.tickets[proc_index] = cur_proc->tickets;
   pstats.stride[proc_index] = cur_proc->stride;
+  pstats.remain[proc_index] = cur_proc->remain;
 
   release(&ptable.lock);
- 
-
-  defaultTicket = new_tickets_count; // new default 
+  
   return new_tickets_count; // returns the number of tickets set for the process
 }
 
 int
 getpinfo(struct pstat *ret_pstat)
 {
-  //  acquire(&pstats.lock);
+
+  if(ret_pstat == 0)
+    return -1;
+
+  acquire(&ptable.lock);
 
   for(int i = 0; i < NPROC; i++) {
     ret_pstat->inuse[i] = pstats.inuse[i];
@@ -683,7 +714,7 @@ getpinfo(struct pstat *ret_pstat)
     ret_pstat->rtime[i] = pstats.rtime[i];
   }
 
-  //  release(&pstats.lock);
+  release(&ptable.lock);
   
   return 0;
 }

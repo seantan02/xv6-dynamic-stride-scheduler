@@ -13,6 +13,8 @@ struct gatedesc idt[256];
 extern uint vectors[];  // in vectors.S: array of 256 entry pointers
 struct spinlock tickslock;
 uint ticks;
+
+// added variables
 extern int useStrideScheduler;
 extern int globalPass;
 extern int globalStride;
@@ -54,14 +56,15 @@ trap(struct trapframe *tf)
     if(cpuid() == 0){
       acquire(&tickslock);
       ticks++;
-	  // increment the global count by stride
-	  if(useStrideScheduler){
+      wakeup(&ticks);
+	  // update globalPass
+	  if(useStrideScheduler == 1){
 		globalPass += globalStride;
-		if(myproc() && myproc()->state == RUNNING){
-			myproc()->tickTaken++;
+	    if(myproc() && myproc()->state == RUNNING){
+		  myproc()->ticksTaken++;
+		  myproc()->pass += myproc()->stride;
 		}
 	  }
-      wakeup(&ticks);
       release(&tickslock);
     }
     lapiceoi();

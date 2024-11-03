@@ -1,16 +1,1 @@
-*Makefile was modifed to make me able to run without all the code. So please copy over original Makefile from ori repo when done.
-
-- Changes by Oct 27
-1. proc.c:
-	- modified allocproc
-		- it's the main entry point of creating process, so we assign default values to process and recompute global
-	- modified scheduler()
-		- where we perform the algorithm of the stride scheduler, uses ticklock and ticks to increment tickTaken of proc.
-	- modified exit()
-		- this is the main exit point of proc and so we recompute global everytime we exit
-
-2. pstat.h:
-	- added the headers as specified on README.md
-3. trap.c:
-	- every timer interupt we will increment the global pass by current stride
-
+*Remember to add workload back to makefile

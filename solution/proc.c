@@ -486,11 +486,13 @@ scheduler(void)
       nextProcToRun->startTick = ticks;
       release(&tickslock);
 
-      nextProcToRun->pass = nextProcToRun->remain + c->pass;
-      //      cprintf("\n SWITCHING TO RUNNNNN PROCESSSS with PID -> %d", nextProcToRun->pid);
+      // compute remain
+      nextProcToRun->remain = nextProcToRun->pass - c->pass;
+      if(nextProcToRun->remain < 0)
+	nextProcToRun->remain = nextProcToRun->remain * -1; // difference
+
       swtch(&(c->scheduler), nextProcToRun->context);
       switchkvm();
-      //      cprintf("\n BACK FROM RUNNNNN");
 
       // we retrieve the ticks difference
       acquire(&tickslock);
@@ -498,14 +500,11 @@ scheduler(void)
       nextProcToRun->tickTaken += tick_diff;
       release(&tickslock);
 
+      nextProcToRun->pass = nextProcToRun->remain + c->pass;
+
       c->pass += c->stride;
       nextProcToRun->pass += nextProcToRun->stride;
-
-      // compute remain
-      nextProcToRun->remain = nextProcToRun->pass - c->pass;
-      if(nextProcToRun->remain < 0)
-	nextProcToRun->remain = nextProcToRun->remain * -1; // difference
-
+      
       // MARKER_PSTATS_UPDATE
       uint proc_index = nextProcToRun - ptable.proc;
       pstats.remain[proc_index] = nextProcToRun->remain;
@@ -737,6 +736,7 @@ settickets(int n)
   cur_proc->stride = STRIDE1/cur_proc->tickets;
   cur_proc->remain = cur_proc->remain * (cur_proc->stride/old_stride_count);
   
+  
 
   // Updating the pstats struct for bookeeping
   // Got to find the ptable index for the curr proc. Doing some math here. Otherwise, will have to do a linear search
@@ -745,6 +745,7 @@ settickets(int n)
   // MARKER_PSTATS_UPDATE
   pstats.tickets[proc_index] = cur_proc->tickets;
   pstats.stride[proc_index] = cur_proc->stride;
+  pstats.remain[proc_index] = cur_proc->remain;
 
   release(&ptable.lock);
   

@@ -16,6 +16,8 @@ struct {
   struct proc proc[NPROC];
 } ptable;
 
+struct pstat pstats = {0};
+
 static struct proc *initproc;
 
 int nextpid = 1;
@@ -27,7 +29,6 @@ extern int useStrideScheduler;
 extern int globalTickets;
 extern int globalStride;
 extern int globalPass;
-extern int defaultTicket;
 struct pstat pstats = {0};
 
 static void wakeup1(void *chan);
@@ -97,15 +98,20 @@ allocproc(void)
   release(&ptable.lock);
   return 0;
 
-found:
+ found:
+  uint proc_index = p - ptable.proc;
+  
   p->state = EMBRYO;
   p->pid = nextpid++;
+  pstats.inuse[proc_index] = 1;
 
   release(&ptable.lock);
 
   // Allocate kernel stack.
   if((p->kstack = kalloc()) == 0){
     p->state = UNUSED;
+    // MARKER_PSTATS_UPDATE
+    pstats.inuse[proc_index] = 0;
     return 0;
   }
   sp = p->kstack + KSTACKSIZE;
@@ -201,11 +207,15 @@ fork(void)
     return -1;
   }
 
+  uint proc_index = np - ptable.proc;
+  
   // Copy process state from proc.
   if((np->pgdir = copyuvm(curproc->pgdir, curproc->sz)) == 0){
     kfree(np->kstack);
     np->kstack = 0;
     np->state = UNUSED;
+    // MARKER_PSTATS_UPDATE
+    pstats.inuse[proc_index] = 0;
     return -1;
   }
   np->sz = curproc->sz;
@@ -248,6 +258,7 @@ exit(void)
   struct proc *curproc = myproc();
   struct proc *p;
   int fd;
+  //  uint proc_index;
 
   if(curproc == initproc)
     panic("init exiting");
@@ -278,6 +289,8 @@ exit(void)
         wakeup1(initproc);
     }
   }
+  //  proc_index = (curproc - ptable.proc)/sizeof(struct proc);
+  //  pstats.inuse[proc_index] = 0;
 
   // Jump into the scheduler, never to return.
   curproc->state = ZOMBIE;
@@ -293,6 +306,7 @@ wait(void)
   struct proc *p;
   int havekids, pid;
   struct proc *curproc = myproc();
+  uint proc_index;
   
   acquire(&ptable.lock);
   for(;;){
@@ -313,6 +327,9 @@ wait(void)
         p->name[0] = 0;
         p->killed = 0;
         p->state = UNUSED;
+	// MARKER_PSTATS_UPDATE
+	proc_index = p - ptable.proc;
+	pstats.inuse[proc_index] = 0;
         release(&ptable.lock);
         return pid;
       }
@@ -464,7 +481,7 @@ scheduler(void)
 			c->proc = 0;
 		}
 		release(&ptable.lock);
-	}
+    }
   }
 }
 
@@ -623,12 +640,12 @@ void
 procdump(void)
 {
   static char *states[] = {
-  [UNUSED]    "unused",
-  [EMBRYO]    "embryo",
-  [SLEEPING]  "sleep ",
-  [RUNNABLE]  "runble",
-  [RUNNING]   "run   ",
-  [ZOMBIE]    "zombie"
+    [UNUSED]    "unused",
+    [EMBRYO]    "embryo",
+    [SLEEPING]  "sleep ",
+    [RUNNABLE]  "runble",
+    [RUNNING]   "run   ",
+    [ZOMBIE]    "zombie"
   };
   int i;
   struct proc *p;
@@ -683,6 +700,7 @@ settickets(int n)
   cur_proc->tickets = new_tickets_count;
   cur_proc->stride = STRIDE1/cur_proc->tickets;
   cur_proc->remain = cur_proc->remain * (cur_proc->stride/old_stride_count);
+  cur_proc->pass = globalPass + cur_proc->remain;
 
   // Updating the pstats struct for bookeeping
   // Got to find the ptable index for the curr proc. Doing some math here. Otherwise, will have to do a linear search

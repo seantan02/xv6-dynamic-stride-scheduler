@@ -1,3 +1,4 @@
+/*
 #include "pstat.h"
 //#include "spinlock.h"
 
@@ -27,7 +28,6 @@ getpinfo(struct pstat *ret_pstat)
   return 0;
 }
 
-/*
 void
 pstatinit(void)
 {

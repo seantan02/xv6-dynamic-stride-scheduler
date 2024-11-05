@@ -10,7 +10,6 @@ static void startothers(void);
 static void mpmain(void)  __attribute__((noreturn));
 extern pde_t *kpgdir;
 extern char end[]; // first address after kernel loaded from ELF file
-int useStrideScheduler = 0;
 
 // Bootstrap processor starts running C code here.
 // Allocate a real stack and switch to it, first
@@ -48,6 +47,7 @@ mpenter(void)
   mpmain();
 }
 
+#ifdef STRIDE
 // helper function
 // Add this function
 void
@@ -57,6 +57,7 @@ initcpuscheduler(struct cpu *c)
   c->tickets = 0;
   c->pass = 0;
 }
+#endif
 
 // Common CPU setup code.
 static void
@@ -65,11 +66,10 @@ mpmain(void)
   cprintf("cpu%d: starting %d\n", cpuid(), cpuid());
   idtinit();       // load idt register
   xchg(&(mycpu()->started), 1); // tell startothers() we're up
-  #if defined(STRIDE)
-	useStrideScheduler = 1;
-  #endif
+#ifdef STRIDE
   // initiate global values
   initcpuscheduler(mycpu());
+#endif
   scheduler();     // start running processes
 }
 

@@ -14,13 +14,5 @@ struct pstat {
   //  struct spinlock lock;
 };
 
-extern struct pstat pstats;
-
-// To retrieve scheduling information for all processes.
 int
 getpinfo(struct pstat *ret_pstat);
-
-/*
-void
-pstatinit(void);
-*/

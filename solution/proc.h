@@ -8,10 +8,12 @@ struct cpu {
   int ncli;                    // Depth of pushcli nesting.
   int intena;                  // Were interrupts enabled before pushcli?
   struct proc *proc;           // The process running on this cpu or null
-  int tickets;			   // Global count of ticket
-  int stride;			   // Global stride
-  int pass;					   // Global pass value
+#ifdef STRIDE  
+  uint tickets;			   // Global count of ticket
+  uint stride;			   // Global stride
+  uint pass;					   // Global pass value
 //  uint lastUpdated;			   // Tick of last updated
+#endif
 };
 
 extern struct cpu cpus[NCPU];
@@ -53,12 +55,14 @@ struct proc {
   struct file *ofile[NOFILE];  // Open files
   struct inode *cwd;           // Current directory
   char name[16];               // Process name (debugging)
+#ifdef STRIDE
   int stride;				   // STIRDE1/tickets
   int pass;					   // Pass value
   int tickets;				   // Tickets, default to 8
   int remain;				   // Remain value
   uint startTick;			   // To track how many ticks this process has taken;
   uint tickTaken;
+#endif
 };
 
 // Process memory is laid out contiguously, low addresses first:

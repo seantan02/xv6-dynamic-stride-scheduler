@@ -714,19 +714,18 @@ settickets(int n)
   
   old_stride_count = cur_proc->stride;
   
+  // update global tickets
+  globalTickets -= cur_proc->tickets;
   cur_proc->tickets = new_tickets_count;
+  globalTickets += cur_proc->tickets;
+  globalStride = STRIDE1 / globalTickets;
+  // continueing updating the process
   cur_proc->stride = STRIDE1/cur_proc->tickets;
   cur_proc->remain = cur_proc->remain * (cur_proc->stride/old_stride_count);
   cur_proc->pass = globalPass + cur_proc->remain;
 
-  // Updating the pstats struct for bookeeping
-  // Got to find the ptable index for the curr proc. Doing some math here. Otherwise, will have to do a linear search
-  uint proc_index = cur_proc - ptable.proc;
-
-  // MARKER_PSTATS_UPDATE
-  pstats.tickets[proc_index] = cur_proc->tickets;
-  pstats.stride[proc_index] = cur_proc->stride;
-  pstats.remain[proc_index] = cur_proc->remain;
+  // update pstats
+  updatePstatsForProcess(cur_proc);
 
   release(&ptable.lock);
   

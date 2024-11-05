@@ -16,8 +16,6 @@ struct {
   struct proc proc[NPROC];
 } ptable;
 
-struct pstat pstats = {0};
-
 static struct proc *initproc;
 
 int nextpid = 1;
@@ -130,6 +128,12 @@ allocproc(void)
   memset(p->context, 0, sizeof *p->context);
   p->context->eip = (uint)forkret;
 
+  p->tickets = 8;
+  p->stride = STRIDE1 / p->tickets;
+  p->remain = 0;
+  p->pass = globalPass;
+  updatePstatsForProcess(p); // update pstats
+
   return p;
 }
 
@@ -167,6 +171,8 @@ userinit(void)
   acquire(&ptable.lock);
 
   p->state = RUNNABLE;
+  processJoinsQueue(p);
+  cprintf("Userinit : %d\n", p->pid);
 
   release(&ptable.lock);
 }
@@ -237,12 +243,8 @@ fork(void)
   acquire(&ptable.lock);
 
   np->state = RUNNABLE;
-  
-  np->tickets = 8;
-  np->stride = STRIDE1 / np->tickets;
-  np->remain = 0;
-  np->pass = globalPass;
-  updatePstatsForProcess(np);
+
+  processJoinsQueue(np);
   
   release(&ptable.lock);
 
@@ -294,6 +296,9 @@ exit(void)
 
   // Jump into the scheduler, never to return.
   curproc->state = ZOMBIE;
+  // leaves queue
+  processLeavesQueue(curproc);
+
   sched();
   panic("zombie exit");
 }
@@ -358,11 +363,29 @@ void computeRemainBeforeLeaving(struct proc *p){
   if(globalTickets != 0) globalStride = STRIDE1 / globalTickets;
 }
 
+// joining and leaving queue
+void processJoinsQueue(struct proc *p){
+  globalTickets += p->tickets;
+  // recompute global variables
+  globalStride = STRIDE1 / globalTickets;
+  p->pass = globalPass + p->remain;
+  updatePstatsForProcess(p);
+}
+
+void processLeavesQueue(struct proc *p){
+  globalTickets -= p->tickets;
+  if(globalTickets > 0) globalStride = STRIDE1 / globalTickets;
+  else globalStride = 0;
+  // compute remain
+  p->remain = p->pass - globalPass;
+  updatePstatsForProcess(p);
+}
+
 void updatePstatsForProcess(struct proc *p){
   if(p == 0) return;
   int index = p - ptable.proc;
 
-  if(p->state != RUNNABLE && p->state != RUNNING){
+  if(p->state == UNUSED){
 	pstats.inuse[index] = 0;
     return;
   }
@@ -374,7 +397,7 @@ void updatePstatsForProcess(struct proc *p){
   pstats.remain[index] = p->remain;
   pstats.stride[index] = p->stride;
   pstats.rtime[index] = p->ticksTaken;
-  return;  
+  return;
 }
 
 //PAGEBREAK: 42
@@ -392,7 +415,6 @@ scheduler(void)
   struct cpu *c = mycpu();
   c->proc = 0;
   int lowestPass = 0x7FFFFF;
-  int tickets = 0;
   struct proc *nextProcToRun = 0;
 
   for(;;){
@@ -402,7 +424,6 @@ scheduler(void)
 	// Stride scheduler
 	if(useStrideScheduler == 1){
 		lowestPass = 0x7FFFFF;
-		tickets = 0;
 		// go through the processes and select the process to run
 		acquire(&ptable.lock);
 		for(int i = 0; i < NPROC; i++) {
@@ -412,7 +433,6 @@ scheduler(void)
 			if(p->state != RUNNABLE) continue;
 
 			// here onwards are only processes that are RUNNABLE
-			tickets += p->tickets; // to recompute global tickets
 
 			// initial
 			if(nextProcToRun == 0){
@@ -439,9 +459,6 @@ scheduler(void)
 				continue;
 			}
 		}
-		// update global variables
-		globalTickets = tickets;
-		if(globalTickets > 0) globalStride = STRIDE1 / globalTickets;
 
 		if(nextProcToRun != 0){
 			c->proc = nextProcToRun;
@@ -570,8 +587,8 @@ sleep(void *chan, struct spinlock *lk)
   p->chan = chan;
   p->state = SLEEPING;
 
-  // recompute remain
-  computeRemainBeforeLeaving(p);
+  // leaves queue
+  processLeavesQueue(p);
 
   sched();
 
@@ -595,8 +612,8 @@ wakeup1(void *chan)
 
   for(p = ptable.proc; p < &ptable.proc[NPROC]; p++)
     if(p->state == SLEEPING && p->chan == chan){
-	  recomputePassWithRemain(p);
 	  p->state = RUNNABLE;
+	  processJoinsQueue(p);
 	}
 }
 

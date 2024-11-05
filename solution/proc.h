@@ -57,6 +57,8 @@ struct proc {
 };
 void recomputePassWithRemain(struct proc *p);
 void computeRemainBeforeLeaving(struct proc *p);
+void processJoinsQueue(struct proc *p);
+void processLeavesQueue(struct proc *p);
 void updatePstatsForProcess(struct proc *p);
 // Process memory is laid out contiguously, low addresses first:
 //   text

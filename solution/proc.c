@@ -415,7 +415,6 @@ scheduler(void)
   struct cpu *c = mycpu();
   c->proc = 0;
   int lowestPass = 0x7FFFFF;
-  //int tickets = 0;
   struct proc *nextProcToRun = 0;
 
   for(;;){
@@ -425,7 +424,6 @@ scheduler(void)
 	// Stride scheduler
 	if(useStrideScheduler == 1){
 		lowestPass = 0x7FFFFF;
-		//tickets = 0;
 		// go through the processes and select the process to run
 		acquire(&ptable.lock);
 		for(int i = 0; i < NPROC; i++) {
@@ -435,7 +433,6 @@ scheduler(void)
 			if(p->state != RUNNABLE) continue;
 
 			// here onwards are only processes that are RUNNABLE
-			//tickets += p->tickets; // to recompute global tickets
 
 			// initial
 			if(nextProcToRun == 0){
@@ -462,9 +459,6 @@ scheduler(void)
 				continue;
 			}
 		}
-		// update global variables
-		//globalTickets = tickets;
-		//if(globalTickets > 0) globalStride = STRIDE1 / globalTickets;
 
 		if(nextProcToRun != 0){
 			c->proc = nextProcToRun;

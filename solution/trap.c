@@ -14,6 +14,11 @@ extern uint vectors[];  // in vectors.S: array of 256 entry pointers
 struct spinlock tickslock;
 uint ticks;
 
+// added variables
+extern int useStrideScheduler;
+extern int globalPass;
+extern int globalStride;
+
 void
 tvinit(void)
 {
@@ -52,6 +57,15 @@ trap(struct trapframe *tf)
       acquire(&tickslock);
       ticks++;
       wakeup(&ticks);
+	  // update globalPass
+	  if(useStrideScheduler == 1){
+		globalPass += globalStride;
+	  }
+
+	  if(myproc() && myproc()->state == RUNNING){
+		myproc()->ticksTaken++;
+	  }
+
       release(&tickslock);
     }
     lapiceoi();

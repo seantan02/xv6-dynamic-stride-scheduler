@@ -1,3 +1,26 @@
+This is a project completed in class CS537 (Operating Systems) at UW-Madison. This repository is strictly for viewing purposes, any copying, especially for academic reference, should request an approval from authors.
+
+Authors:
+1. Sean Tan Siong Ann, contact Sean at sccf5bykus@privaterelay.appleid.com
+  - Implemented Stride Scheduler 100% by himself
+  - Fixed syscalls implemented by Pritheswar to have expected behavior when run "workload &" after starting the xv6
+  - Design the overall idea of implementation of the scheduler
+3. Pritheswar
+  - Impleted syscalls according to the implementation of Sean's Stride Scheduler
+
+This project contains the modified code for XV6 to allow Dynamic Stride Scheduler. The main modified fiels are:
+1. proc.c
+2. trap.c
+3. main.c
+4. All files needed for craeting new syscall
+
+To run the xv6 with Dynamic Stride Scheduler, in your terminal run:
+- git clone HTTP_URL of this repo
+- Go into this repository and go into folder "solution"
+- type "make clean" and hit enter
+- type "make qemu-nox SCHEDULER=STRIDE" and hit enter
+- To visualize how dynamic scheduler works, type "workload &" after the OS has started
+
 Analysis:
 
 - RR
